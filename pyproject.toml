@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "qualifier"
+version = "0.1.0"
+description = ""
+authors = ["Alex Ramos <aramos@asserts.ai>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+click = "^8.1.3"
+requests = "^2.27.1"
+rich = "^12.4.4"
+PyYAML = "^6.0"
+
+[tool.poetry.scripts]
+qualifier = "qualifier.cli:cli"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

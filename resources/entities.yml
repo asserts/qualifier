@@ -1,0 +1,159 @@
+entities:
+  - type: Node
+    name: node | instance
+    lookup:
+      instance: instance
+      instance_id: instance_id
+    definedBy:
+      # Node Discovery for non k8s environment
+      # Alerts from Node metrics will use lookup label `instance` to link to Node Entity in KG
+      - sourceQuery: node_uname_info{pod = "", namespace="", kubernetes_namespace = "", kubernetes_pod_name =""} == 1
+        rawQuery: node_uname_info{pod = "", namespace="", kubernetes_namespace = "", kubernetes_pod_name =""} == 1
+        labelValues:
+          nodename: nodename # an user friendly display name set by node exporter
+          domainname: domainname
+          os: sysname
+          instance: instance
+
+      # Node Discovery for k8s environment. Copy instance label from kubelet_node only when node follows the naming pattern i.e. in eks
+      - sourceQuery: asserts:kube_node_info * on(node, asserts_env, asserts_site) group_left (instance)
+                group by (node, instance, asserts_env, asserts_site) (kubelet_node_name{node=~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"})==1
+        rawQuery: >
+          label_replace(
+            kube_node_info{provider_id=~"aws.*(i-.*)"}, "instance_id", "${1}","provider_id","aws.*(i-.*)"
+          ) * on(node, asserts_env, asserts_site) group_left (instance)
+            group by (node, instance, asserts_env, asserts_site) (kubelet_node_name{node=~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"})==1
+        labelValues:
+          kernel_version: kernel_version
+          k8s_version: kubelet_version
+          os: os_image
+          provider_name: provider_id # e.g. aws:///us-west-2a/i-0d172102720f5cfe4
+          nodename: node
+          instance: instance
+          instance_id: instance_id
+
+      # in environments created with eksctl we found  kubelet_node_name metric missing, hence using regex to extract instance
+      - sourceQuery: >
+          (label_replace(kube_node_info, "instance", "$1.$2.$3.$4", "node", "ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"))
+          * on(asserts_env, asserts_site) group_left() (absent(kubelet_node_name))
+        rawQuery: >
+          (label_replace(kube_node_info, "instance", "$1.$2.$3.$4", "node", "ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"))
+          * on(asserts_env, asserts_site) group_left() (absent(kubelet_node_name))
+        labelValues:
+          instance: instance
+          nodename: node
+          kernel_version: kernel_version
+          k8s_version: kubelet_version
+          os: os_image
+          provider_name: provider_id # e.g. aws:///us-west-2a/i-0d172102720f5cfe4
+
+      # when node does not match previous expected patterns, use internal_ip (ip of the node exported direct from ksm) for the instance
+      - sourceQuery: label_replace(kube_node_info{node!="", node!~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"}, "instance", "$1", "internal_ip", "(.+)")
+        rawQuery: label_replace(kube_node_info{node!="", node!~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"}, "instance", "$1", "internal_ip", "(.+)")
+        labelValues:
+          instance: instance
+          nodename: node
+          kernel_version: kernel_version
+          k8s_version: kubelet_version
+          os: os_image
+          provider_name: provider_id # e.g. aws:///us-west-2a/i-0d172102720f5cfe4
+
+      # discovery for digital ocean where node exporter sets instance as node (not ip)
+      - sourceQuery: kube_node_info{provider_id=~"digitalocean.*"}
+        rawQuery: kube_node_info{provider_id=~"digitalocean.*"}
+        labelValues:
+          instance: node
+          nodename: node
+          kernel_version: kernel_version
+          k8s_version: kubelet_version
+          os: os_image
+          provider_name: provider_id # e.g. digitalocean://274889718
+          node_ip: internal_ip
+
+  - type: Service
+    name: workload | service | job
+    lookup:
+      workload: workload | deployment | statefulset | daemonset | replicaset
+      service: service
+      job: job
+    definedBy:
+      - sourceQuery: >
+          group without (pod, instance, node) (up {pod!="", container!="istio-proxy"}
+          * on (pod, namespace, asserts_env, asserts_site) group_left(workload, workload_type)
+          group by (pod, workload, workload_type, namespace, asserts_env, asserts_site) (asserts:mixin_pod_workload))
+        rawQuery: >
+          group without (pod, instance, node)(up {pod!="", container!="istio-proxy"} * on (pod, namespace, asserts_env, asserts_site) 
+          group_left(workload, workload_type) (group by (pod, workload, workload_type, namespace, asserts_env, asserts_site) (
+          label_replace(
+            max by (cluster, namespace, workload, pod, asserts_env, asserts_site) (
+              label_replace(
+                label_replace(
+                  kube_pod_owner{owner_kind="ReplicaSet"},
+                  "replicaset", "$1", "owner_name", "(.*)"
+                ) * on(replicaset, namespace, asserts_env, asserts_site) group_left(owner_name) topk by(replicaset, namespace, asserts_env, asserts_site) (
+                  1, max by (replicaset, namespace, owner_name, asserts_env, asserts_site) (
+                    kube_replicaset_owner{owner_name !="<none>"}
+                  )
+                ),
+                "workload", "$1", "owner_name", "(.*)"
+              )
+            ), "workload_type", "deployment", "", ""))))
+        labelValues:
+          job: job
+          # this is the endpoint prom is scraping, used as metadata, not for linking with KubeService
+          # KubeService - Service linking is available only when r2ks data is available based on workload label
+          # dropping namespace to make it readable
+          service: service
+          workload: workload
+          workload_type: workload_type
+          container: container
+      # k8s non pod targets
+      - sourceQuery: group without (pod, instance, node) (up {pod= "", namespace !=""})
+        rawQuery: group without (pod, instance, node) (up {pod= "", namespace !=""})
+        labelValues:
+          job: job
+          service: service
+          container: container
+
+      # non k8s prom scrapes
+      - sourceQuery: group without (pod, instance, node) (up {pod="", namespace=""})
+        rawQuery: group without (pod, instance, node) (up {pod="", namespace=""})
+        labelValues:
+          job: job
+          container: container
+
+      # Group pods without `up` metrics i.e. ...unless on (pod) up {pod !=""}
+      # Discover istio pods by workload
+      - sourceQuery: >
+          group by (namespace, workload, workload_type, asserts_env, asserts_site) (
+            (kube_pod_info{created_by_kind!="Job"}
+            * on (pod, namespace, asserts_env, asserts_site) group_left(workload, workload_type)
+            group by (pod, workload, workload_type,  namespace, asserts_env, asserts_site) (asserts:mixin_pod_workload))
+            unless on (pod,  namespace, asserts_env, asserts_site)
+            group by (pod,  namespace, asserts_env, asserts_site) (up {pod !="", container!="istio-proxy"})
+          )
+        rawQuery: >
+          group by (namespace, workload, workload_type, asserts_env, asserts_site)
+            (kube_pod_info{created_by_kind!="Job"}
+            * on (pod, namespace, asserts_env, asserts_site) group_left(workload, workload_type)
+            (group by (pod, workload, workload_type,  namespace, asserts_env, asserts_site) (
+            label_replace(
+            max by (cluster, namespace, workload, pod, asserts_env, asserts_site) (
+              label_replace(
+                label_replace(
+                  kube_pod_owner{owner_kind="ReplicaSet"},
+                  "replicaset", "$1", "owner_name", "(.*)"
+                ) * on(replicaset, namespace, asserts_env, asserts_site) group_left(owner_name) topk by(replicaset, namespace, asserts_env, asserts_site) (
+                  1, max by (replicaset, namespace, owner_name, asserts_env, asserts_site) (
+                    kube_replicaset_owner{owner_name !="<none>"}
+                  )
+                ),
+                "workload", "$1", "owner_name", "(.*)"
+              )
+            ), "workload_type", "deployment", "", "")
+            )
+            unless on (pod,  namespace, asserts_env, asserts_site)
+            group by (pod,  namespace, asserts_env, asserts_site) (up {pod !="", container!="istio-proxy"})))
+        labelValues:
+          workload: workload
+          workload_type: workload_type
