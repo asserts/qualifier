@@ -1,7 +1,6 @@
-# Prometheus Metric Checker
+# Asserts Qualifier
 
-This script will run some simple Prometheus queries against a configured host for
-use by Asserts to verify whether metrics structure is compatible with an Asserts installation.
+This tool will is used by Asserts to qualify the compatibility of a Prometheus setup with an Asserts installation
 
 ## Requirements
 
