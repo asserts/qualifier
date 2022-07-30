@@ -1,18 +1,24 @@
 class Entity:
+    names = []
     query_has_result = False
     discovered = False
-    discovery_queries = []
+    discovery_queries = {}
 
     def __init__(self, type):
         self.type = type
         self.name = None
-        self.name_labels = None
+        self.name_labels = []
+        self.query_ids = []
 
     def set_name(self, name):
         self.name = name
+        Entity.names.append(name)
 
-    def set_name_labels(self, name_labels):
-        self.name_labels = name_labels
+    def add_name_labels(self, name_labels):
+        self.name_labels.append(name_labels)
+
+    def add_query_id(self, query_id):
+        self.query_ids.append(query_id)
 
     def get_class(self):
         return self.__class__
@@ -26,8 +32,8 @@ class Entity:
         cls.discovered = True
 
     @classmethod
-    def set_discovery_queries(cls, source_query, raw_query):
-        if cls.discovery_queries:
-            cls.discovery_queries.append((source_query, raw_query))
+    def set_discovery_queries(cls, idx, source_query, raw_query):
+        if cls.discovery_queries.get(idx):
+            cls.discovery_queries[idx].append((source_query, raw_query))
         else:
-            cls.discovery_queries = [(source_query, raw_query)]
+            cls.discovery_queries[idx] = [(source_query, raw_query)]

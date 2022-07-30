@@ -17,15 +17,23 @@ def cli(host):
 
     console.print('Qualifier Results:\n', style='bold green')
 
-    for entity_type, entity_list in entities.items():
+    for entity_type, entity_dict in entities.items():
         console.print(f'{entity_type}s:\n', style='bold cyan')
 
         entity_class = Discovery.entity_classes[entity_type]
-        console.print(f'Queries Have Results: {entity_class.query_has_result}', style='bold green')
+        #console.print(f'Queries Have Results: {entity_class.query_has_result}', style='bold green')
         console.print(f'Entities Discovered: {entity_class.discovered}\n', style='bold green')
 
-        if not entity_list:
+
+        # console.print(f'Discovery Queries:\n', style='bold green')
+        # for query_set in entity_class.discovery_queries:
+        #     console.print('sourceQuery:', style='bold green')
+        #     console.print(f'{query_set[0]}\n', style='bold cyan')
+
+        if not entity_dict:
             console.print(f'{entity_type} not discovered', style='bold red')
-        for entity in entity_list:
+        for entity in entity_dict.values():
+            if len(entity.query_ids) > 1:
+                console.print(f'{entity_type} {entity.name} has multiple query ids: {entity.query_ids}', style='bold red')
             console.print(f'{entity.name}: {entity.name_labels}', style='bold magenta')
         print('\n')

@@ -23,7 +23,7 @@ class Discovery:
     def discover(self):
         for entity in self.entities['entities']:
             entity_type = entity['type']
-            self.entity_objects[entity_type] = []
+            self.entity_objects[entity_type] = {}
             for defined in entity['definedBy']:
                 query_result = self.client.instant_query(defined['rawQuery'])
 
@@ -32,20 +32,27 @@ class Discovery:
                     entity_class = Discovery.entity_classes.get(entity_type)
                     entity_class.entity_query_has_result()
 
-                    name_results = self._get_name(entity_type, entity['name'], query_result)
+                    name_results = self._get_name(entity['name'], query_result)
 
                     if name_results:
                         entity_class.entity_discovered()
-                        entity_class.set_discovery_queries(defined['sourceQuery'], defined['rawQuery'])
+                        entity_class.set_discovery_queries(defined['id'], defined['sourceQuery'], defined['rawQuery'])
                         for name_value, name_labels in name_results.items():
-                            entity_obj = entity_class(entity_type)
-                            entity_obj.set_name(name_value)
-                            entity_obj.set_name_labels(name_labels)
-                            self.entity_objects[entity_type].append(entity_obj)
+                            entity_obj = self.entity_objects[entity_type].get(name_value)
+                            if entity_obj:
+                                entity_obj = self.entity_objects[entity_type][name_value]
+                            else:
+                                entity_obj = entity_class(entity_type)
+                                entity_obj.set_name(name_value)
+
+                            entity_obj.add_name_labels(name_labels)
+                            entity_obj.add_query_id(defined['id'])
+
+                            self.entity_objects[entity_type][name_value] = entity_obj
 
         return self.entity_objects
 
-    def _get_name(self, entity_type, name, query_result):
+    def _get_name(self, name, query_result):
         name_results = {}
         tracked_metrics = set()
 

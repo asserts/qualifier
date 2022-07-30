@@ -7,7 +7,8 @@ entities:
     definedBy:
       # Node Discovery for non k8s environment
       # Alerts from Node metrics will use lookup label `instance` to link to Node Entity in KG
-      - sourceQuery: node_uname_info{pod = "", namespace="", kubernetes_namespace = "", kubernetes_pod_name =""} == 1
+      - id: 0
+        sourceQuery: node_uname_info{pod = "", namespace="", kubernetes_namespace = "", kubernetes_pod_name =""} == 1
         rawQuery: node_uname_info{pod = "", namespace="", kubernetes_namespace = "", kubernetes_pod_name =""} == 1
         labelValues:
           nodename: nodename # an user friendly display name set by node exporter
@@ -16,7 +17,8 @@ entities:
           instance: instance
 
       # Node Discovery for k8s environment. Copy instance label from kubelet_node only when node follows the naming pattern i.e. in eks
-      - sourceQuery: asserts:kube_node_info * on(node, asserts_env, asserts_site) group_left (instance)
+      - id: 1
+        sourceQuery: asserts:kube_node_info * on(node, asserts_env, asserts_site) group_left (instance)
                 group by (node, instance, asserts_env, asserts_site) (kubelet_node_name{node=~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"})==1
         rawQuery: >
           label_replace(
@@ -33,7 +35,8 @@ entities:
           instance_id: instance_id
 
       # in environments created with eksctl we found  kubelet_node_name metric missing, hence using regex to extract instance
-      - sourceQuery: >
+      - id: 2
+        sourceQuery: >
           (label_replace(kube_node_info, "instance", "$1.$2.$3.$4", "node", "ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"))
           * on(asserts_env, asserts_site) group_left() (absent(kubelet_node_name))
         rawQuery: >
@@ -48,7 +51,8 @@ entities:
           provider_name: provider_id # e.g. aws:///us-west-2a/i-0d172102720f5cfe4
 
       # when node does not match previous expected patterns, use internal_ip (ip of the node exported direct from ksm) for the instance
-      - sourceQuery: label_replace(kube_node_info{node!="", node!~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"}, "instance", "$1", "internal_ip", "(.+)")
+      - id: 3
+        sourceQuery: label_replace(kube_node_info{node!="", node!~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"}, "instance", "$1", "internal_ip", "(.+)")
         rawQuery: label_replace(kube_node_info{node!="", node!~"ip-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+).*"}, "instance", "$1", "internal_ip", "(.+)")
         labelValues:
           instance: instance
@@ -59,7 +63,8 @@ entities:
           provider_name: provider_id # e.g. aws:///us-west-2a/i-0d172102720f5cfe4
 
       # discovery for digital ocean where node exporter sets instance as node (not ip)
-      - sourceQuery: kube_node_info{provider_id=~"digitalocean.*"}
+      - id: 4
+        sourceQuery: kube_node_info{provider_id=~"digitalocean.*"}
         rawQuery: kube_node_info{provider_id=~"digitalocean.*"}
         labelValues:
           instance: node
@@ -77,7 +82,8 @@ entities:
       service: service
       job: job
     definedBy:
-      - sourceQuery: >
+      - id: 0
+        sourceQuery: >
           group without (pod, instance, node) (up {pod!="", container!="istio-proxy"}
           * on (pod, namespace, asserts_env, asserts_site) group_left(workload, workload_type)
           group by (pod, workload, workload_type, namespace, asserts_env, asserts_site) (asserts:mixin_pod_workload))
@@ -108,7 +114,8 @@ entities:
           workload_type: workload_type
           container: container
       # k8s non pod targets
-      - sourceQuery: group without (pod, instance, node) (up {pod= "", namespace !=""})
+      - id: 1
+        sourceQuery: group without (pod, instance, node) (up {pod= "", namespace !=""})
         rawQuery: group without (pod, instance, node) (up {pod= "", namespace !=""})
         labelValues:
           job: job
@@ -116,7 +123,8 @@ entities:
           container: container
 
       # non k8s prom scrapes
-      - sourceQuery: group without (pod, instance, node) (up {pod="", namespace=""})
+      - id: 2
+        sourceQuery: group without (pod, instance, node) (up {pod="", namespace=""})
         rawQuery: group without (pod, instance, node) (up {pod="", namespace=""})
         labelValues:
           job: job
@@ -124,7 +132,8 @@ entities:
 
       # Group pods without `up` metrics i.e. ...unless on (pod) up {pod !=""}
       # Discover istio pods by workload
-      - sourceQuery: >
+      - id: 3
+        sourceQuery: >
           group by (namespace, workload, workload_type, asserts_env, asserts_site) (
             (kube_pod_info{created_by_kind!="Job"}
             * on (pod, namespace, asserts_env, asserts_site) group_left(workload, workload_type)
